@@ -70,6 +70,8 @@ dependencies {
     implementation "androidx.camera:camera-video:$cameraxVersion"
     implementation "androidx.camera:camera-view:$cameraxVersion"
     implementation "androidx.camera:camera-extensions:$cameraxVersion"
+    implementation("com.darkrockstudios:mpfilepicker:2.0.2")
+
 
 // Accompanist
     def accompanistPermissionsVersion = '0.23.1'

@@ -76,4 +76,6 @@ dependencies {
 // Accompanist
     def accompanistPermissionsVersion = '0.23.1'
     implementation "com.google.accompanist:accompanist-permissions:$accompanistPermissionsVersion"
+
+    implementation 'org.jetbrains.kotlinx:kotlin-deeplearning-onnx:0.5.1'
 }

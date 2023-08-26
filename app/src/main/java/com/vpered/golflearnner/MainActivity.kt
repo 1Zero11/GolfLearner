@@ -1,13 +1,21 @@
 package com.vpered.golflearnner
 
+import android.R.attr
 import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.BitmapFactory.Options
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.PaintFlagsDrawFilter
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.RectF
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -26,6 +34,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.semantics.Role.Companion.Image
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -44,9 +55,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val modelBytes = resources.openRawResource(com.vpered.golflearnner.R.raw.kps_detector).readBytes()
-        Predict(modelBytes, resources)
-
         setContent {
             GolfLearnerTheme {
                 // A surface container using the 'background' color from the theme
@@ -56,7 +64,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     Column() {
                         //Greeting("Android")
-                        FileChooser()
+                        FileChooser(resources)
                     }
 
                 }
@@ -74,9 +82,10 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun FileChooser(){
+fun FileChooser(resources: Resources){
     var showFilePicker by remember { mutableStateOf(false) }
     var pickedFileName by remember { mutableStateOf("") }
+    var bitmap by remember { mutableStateOf<Bitmap?>(null) }
 
     val fileType = "mp4"
     FilePicker(showFilePicker, fileExtensions = listOf(fileType)) { path ->
@@ -106,9 +115,19 @@ fun FileChooser(){
         Text(text = "File Chosen: " + pickedFileName)
     }
 
+    val modelBytes = resources.openRawResource(com.vpered.golflearnner.R.raw.kps_detector).readBytes()
+    bitmap = Predict(modelBytes, resources)
+
+    if(bitmap != null){
+    Image(
+        bitmap = bitmap!!.asImageBitmap(),
+        contentDescription = "some useful description",
+    )
+    }
+
 }
 
-fun Predict(modelBytes: ByteArray, resources: Resources) {
+fun Predict(modelBytes: ByteArray, resources: Resources): Bitmap {
 
     val model = OnnxInferenceModel(modelBytes)
 
@@ -122,7 +141,7 @@ fun Predict(modelBytes: ByteArray, resources: Resources) {
     val o = Options()
     o.inScaled = false
 
-    val bitmap = BitmapFactory.decodeResource(resources, com.vpered.golflearnner.R.raw.golf, o)
+    var bitmap = BitmapFactory.decodeResource(resources, com.vpered.golflearnner.R.raw.golf3, o).copy(Bitmap.Config.ARGB_8888, true)
     val bitmap2 = BitmapFactory.decodeResource(resources, com.vpered.golflearnner.R.raw.golf_guy)
 
     val detections = model.inferAndCloseUsing(ExecutionProvider.CPU()) {
@@ -135,21 +154,48 @@ fun Predict(modelBytes: ByteArray, resources: Resources) {
         Log.d("MYTAG", "firstMessage")
         val res = it.predictSoftly(inputData)
 
+        var res2 = it.predictRaw(inputData)
+
 
 
         val resArr = Array(17) { i ->
             FloatArray(3) { j ->
                 if(j==0) {
-                    res[i * 3 + j] * bitmap.width
+                    res[i * 3 + j] * bitmap.height
                 } else if(j==1){
-                    res[i * 3 + j]*bitmap.height
+                    res[i * 3 + j]*bitmap.width
                 } else{
                     res[i * 3 + j]
                 }
 
             }
         }
+
+        val size: Int = Math.min(20, 20)
+
+
+        var localCanvas = Canvas(bitmap)
+        localCanvas.setDrawFilter(
+            PaintFlagsDrawFilter(
+                0,
+                Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG
+            )
+        )
+        val paint = Paint()
+        paint.color = Color.Red.toArgb()
+        paint.setAntiAlias(true)
+
+        for (i in resArr.indices) {
+            val rectF = RectF(resArr[i][1], resArr[i][0], resArr[i][1]+20, resArr[i][0]+20)
+            localCanvas.drawOval(rectF, paint)
+        }
+        paint.setXfermode(PorterDuffXfermode(PorterDuff.Mode.SRC_IN))
+        localCanvas.drawBitmap(bitmap, 0f, 0f, paint)
+        paint.setXfermode(null)
+
         Log.d("MYTAG", "Okay")
+
+        return bitmap
     }
 
 

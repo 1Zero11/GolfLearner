@@ -45,6 +45,8 @@ import androidx.compose.ui.unit.dp
 import androidx.loader.content.CursorLoader
 import com.darkrockstudios.libraries.mpfilepicker.FilePicker
 import com.vpered.golflearnner.ui.theme.GolfLearnerTheme
+import org.jetbrains.kotlinx.dl.api.core.shape.TensorShape
+import org.jetbrains.kotlinx.dl.api.preprocessing.Operation
 import org.jetbrains.kotlinx.dl.api.preprocessing.pipeline
 import org.jetbrains.kotlinx.dl.impl.preprocessing.TensorLayout
 import org.jetbrains.kotlinx.dl.impl.preprocessing.resize
@@ -99,8 +101,20 @@ fun FileChooser(resources: Resources){
 
             Log.d("MYTAG", "Well?")
 
-            val modelBytes = resources.openRawResource(com.vpered.golflearnner.R.raw.kps_detector).readBytes()
-            bitmap = Predict(modelBytes, bitmap!!)
+            //val modelBytes = resources.openRawResource(com.vpered.golflearnner.R.raw.kps_detector).readBytes()
+            val modelProcessing = ModelProcessing()
+            val kpsPreprocessing = modelProcessing.GetKPSPreprocessing()
+            val model = modelProcessing.GetKPSModel(resources)
+
+            val floatArr = Predict(model, bitmap!!, kpsPreprocessing)
+
+            bitmap = modelProcessing.PaintBitmapKPS(
+                modelProcessing.ConvertKPSPoints(
+                    floatArr,
+                    bitmap!!.height,
+                    bitmap!!.width),
+                bitmap!!
+            )
         }
 
     }
@@ -132,18 +146,13 @@ fun FileChooser(resources: Resources){
 
 }
 
-
-
-fun Predict(modelBytes: ByteArray, inputBitmap: Bitmap): Bitmap {
+fun Predict(
+    modelBytes: ByteArray,
+    inputBitmap: Bitmap,
+    preprocessing: Operation<Bitmap, Pair<FloatArray, TensorShape>>
+): FloatArray {
 
     val model = OnnxInferenceModel(modelBytes)
-
-    val preprocessing = pipeline<Bitmap>()
-        .resize {
-            outputHeight = 192
-            outputWidth = 192
-        }
-        .toFloatArray { layout = TensorLayout.NHWC }
 
     val o = Options()
     o.inScaled = false
@@ -155,45 +164,7 @@ fun Predict(modelBytes: ByteArray, inputBitmap: Bitmap): Bitmap {
         var (inputData, shape) = preprocessing.apply(bitmap)
 
         val res = it.predictSoftly(inputData)
-
-        val resArr = Array(17) { i ->
-            FloatArray(3) { j ->
-                if(j==0) {
-                    res[i * 3 + j] * bitmap.height
-                } else if(j==1){
-                    res[i * 3 + j]*bitmap.width
-                } else{
-                    res[i * 3 + j]
-                }
-
-            }
-        }
-
-        val size: Int = Math.min(20, 20)
-
-
-        var localCanvas = Canvas(bitmap)
-        localCanvas.setDrawFilter(
-            PaintFlagsDrawFilter(
-                0,
-                Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG
-            )
-        )
-        val paint = Paint()
-        paint.color = Color.Red.toArgb()
-        paint.setAntiAlias(true)
-
-        for (i in resArr.indices) {
-            val rectF = RectF(resArr[i][1], resArr[i][0], resArr[i][1]+20, resArr[i][0]+20)
-            localCanvas.drawOval(rectF, paint)
-        }
-        paint.setXfermode(PorterDuffXfermode(PorterDuff.Mode.SRC_IN))
-        localCanvas.drawBitmap(bitmap, 0f, 0f, paint)
-        paint.setXfermode(null)
-
-        Log.d("MYTAG", "Okay")
-
-        return bitmap
+        return res
     }
 }
 

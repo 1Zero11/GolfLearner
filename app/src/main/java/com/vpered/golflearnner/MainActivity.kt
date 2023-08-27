@@ -1,7 +1,7 @@
 package com.vpered.golflearnner
 
-import android.R.attr
 import android.content.res.Resources
+import android.database.Cursor
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.BitmapFactory.Options
@@ -11,7 +11,10 @@ import android.graphics.PaintFlagsDrawFilter
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
+import android.media.MediaMetadataRetriever
+import android.net.Uri
 import android.os.Bundle
+import android.provider.MediaStore
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -36,10 +39,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.semantics.Role.Companion.Image
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.loader.content.CursorLoader
 import com.darkrockstudios.libraries.mpfilepicker.FilePicker
 import com.vpered.golflearnner.ui.theme.GolfLearnerTheme
 import org.jetbrains.kotlinx.dl.api.preprocessing.pipeline
@@ -49,6 +52,7 @@ import org.jetbrains.kotlinx.dl.impl.preprocessing.toFloatArray
 import org.jetbrains.kotlinx.dl.onnx.inference.OnnxInferenceModel
 import org.jetbrains.kotlinx.dl.onnx.inference.executionproviders.ExecutionProvider
 import org.jetbrains.kotlinx.dl.onnx.inference.inferAndCloseUsing
+import java.io.FileInputStream
 
 
 class MainActivity : ComponentActivity() {
@@ -74,14 +78,6 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "$name!",
-        modifier = modifier
-    )
-}
-
-@Composable
 fun FileChooser(resources: Resources){
     var showFilePicker by remember { mutableStateOf(false) }
     var pickedFileName by remember { mutableStateOf("") }
@@ -92,8 +88,20 @@ fun FileChooser(resources: Resources){
         showFilePicker = false
         // do something with path
 
-        if(path?.path != null)
-            pickedFileName = path.path;
+        if(path?.path != null) {
+            pickedFileName = path.path
+            val uri = Uri.parse(pickedFileName)
+
+            val absPath = uri.path?.split(":")!![1]
+            pickedFileName = absPath
+
+            bitmap = GetFrame(absPath!!, 1000)
+
+            Log.d("MYTAG", "Well?")
+
+            val modelBytes = resources.openRawResource(com.vpered.golflearnner.R.raw.kps_detector).readBytes()
+            bitmap = Predict(modelBytes, bitmap!!)
+        }
 
     }
 
@@ -115,9 +123,6 @@ fun FileChooser(resources: Resources){
         Text(text = "File Chosen: " + pickedFileName)
     }
 
-    val modelBytes = resources.openRawResource(com.vpered.golflearnner.R.raw.kps_detector).readBytes()
-    bitmap = Predict(modelBytes, resources)
-
     if(bitmap != null){
     Image(
         bitmap = bitmap!!.asImageBitmap(),
@@ -127,7 +132,9 @@ fun FileChooser(resources: Resources){
 
 }
 
-fun Predict(modelBytes: ByteArray, resources: Resources): Bitmap {
+
+
+fun Predict(modelBytes: ByteArray, inputBitmap: Bitmap): Bitmap {
 
     val model = OnnxInferenceModel(modelBytes)
 
@@ -141,22 +148,13 @@ fun Predict(modelBytes: ByteArray, resources: Resources): Bitmap {
     val o = Options()
     o.inScaled = false
 
-    var bitmap = BitmapFactory.decodeResource(resources, com.vpered.golflearnner.R.raw.golf3, o).copy(Bitmap.Config.ARGB_8888, true)
-    val bitmap2 = BitmapFactory.decodeResource(resources, com.vpered.golflearnner.R.raw.golf_guy)
+    //bitmap = BitmapFactory.decodeResource(resources, com.vpered.golflearnner.R.raw.golf3, o).copy(Bitmap.Config.ARGB_8888, true)
+    var bitmap = inputBitmap.copy(Bitmap.Config.ARGB_8888, true)
 
     val detections = model.inferAndCloseUsing(ExecutionProvider.CPU()) {
         var (inputData, shape) = preprocessing.apply(bitmap)
 
-        val (inputData2, _) = preprocessing.apply(bitmap2)
-
-        //inputData += inputData2
-        val test = arrayOf(inputData)
-        Log.d("MYTAG", "firstMessage")
         val res = it.predictSoftly(inputData)
-
-        var res2 = it.predictRaw(inputData)
-
-
 
         val resArr = Array(17) { i ->
             FloatArray(3) { j ->
@@ -197,14 +195,15 @@ fun Predict(modelBytes: ByteArray, resources: Resources): Bitmap {
 
         return bitmap
     }
-
-
 }
 
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    GolfLearnerTheme {
-        Greeting("Android")
-    }
+fun GetFrame(path: String, frameTime: Long): Bitmap? {
+    //var inputStream = FileInputStream(path);
+
+    val retriever = MediaMetadataRetriever()
+    retriever.setDataSource(path)
+    val bitmap = retriever.getFrameAtTime(frameTime,
+        MediaMetadataRetriever.OPTION_CLOSEST)
+
+    return bitmap
 }
